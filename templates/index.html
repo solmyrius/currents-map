@@ -1,0 +1,153 @@
+<html>
+<head>
+<title>BOM scalar map (temperature, salinity, elevation)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.8.0/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.8.0/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.vectorgrid@latest/dist/Leaflet.VectorGrid.bundled.js"></script>
+<script src="https://unpkg.com/esri-leaflet@2.1.4/dist/esri-leaflet.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script src="https://smlum.github.io/netcdf-vis/app/dist/leaflet-velocity.js"></script>
+<script src="https://smlum.github.io/netcdf-vis/app/src/leaflet-idw.js"></script>
+<style>
+body{
+  margin: 0;
+}
+</style>
+</head>
+<body>
+<div id="map_wrapper" style="width:100%; height:100%">
+	<div id="map_div" style="width:100%; height:100%">IDYOC713.eta.2022090612.000.model.nc</div>
+</div>
+<script>
+
+function getParameter(parameterName) {
+    var result = null,
+        tmp = [];
+    location.search
+        .substr(1)
+        .split("&")
+        .forEach(function (item) {
+          tmp = item.split("=");
+          if (tmp[0] === parameterName) result = decodeURIComponent(tmp[1]);
+        });
+    return result;
+}
+
+var lat1 = getParameter('lat1');
+var lat2 = getParameter('lat2');
+var lng1 = getParameter('lng1');
+var lng2 = getParameter('lng2');
+
+if(lat1 == null){
+	lat1 = -75;
+}else{
+	lat1 = parseFloat(lat1);
+}
+
+if(lat2 == null){
+	lat2 = 5;
+}else{
+	lat2 = parseFloat(lat2);
+}
+
+if(lng1 == null){
+	lng1 = 65;
+}else{
+	lng1 = parseFloat(lng1);
+}
+
+if(lng2 == null){
+	lng2 = 180;
+}else{
+	lng2 = parseFloat(lng2);
+}
+
+var bomBounds = [
+	[lat1,lng1],
+	[lat2,lng2]
+];
+
+var osmmap = L.map('map_div', {
+	scrollWheelZoom: true,
+	minZoom:2,
+});
+
+var base_layers = {
+        "Grey Canvas": L.esri.basemapLayer('DarkGray'),
+        "Satellite": L.esri.basemapLayer('Imagery'),
+    };
+
+base_layers["Satellite"].addTo(osmmap)
+
+var lc_base = L.control.layers(base_layers,null,{collapsed:false});
+lc_base.addTo(osmmap);
+
+var lc_overlay = L.control.layers({},null,{collapsed:false});
+lc_overlay.addTo(osmmap);
+
+osmmap.fitBounds(bomBounds);
+
+var currentLayer, tempLayer, saltLayer, etaLayer;
+
+jQuery.getJSON('/bom_data/{{models["model_name_u"]}}-{{dimension}}.json', function (data) {
+
+	currentLayer = L.velocityLayer({
+		displayValues: true,
+		displayOptions: {
+			velocityType: 'Current',
+			displayPosition: 'bottomleft',
+			displayEmptyString: 'No current data'
+		},
+		data: data,
+		speedUnit: "ms",
+		maxVelocity: 1,
+		velocityScale: 0.1
+	});
+
+	lc_overlay.addBaseLayer(currentLayer, 'Currents');
+
+	if((typeof(tempLayer) == 'undefined' || !('_map' in tempLayer)) && (typeof(saltLayer) == 'undefined' || !('_map' in saltLayer)) && (typeof(etaLayer) == 'undefined' || !('_map' in etaLayer))){
+
+		currentLayer.addTo(osmmap);
+	}
+});
+
+jQuery.getJSON('/bom_data/{{models["model_name_temp"]}}-{{dimension}}.json', function (data) {
+
+	tempLayer = L.idwLayer(data,{
+            opacity: 0.3,
+            maxZoom: 18,
+            cellSize: 3,
+            exp: 4,
+        })
+
+	lc_overlay.addBaseLayer(tempLayer, 'Temperature');
+});
+
+jQuery.getJSON('/bom_data/{{models["model_name_salt"]}}-{{dimension}}.json', function (data) {
+
+	saltLayer = L.idwLayer(data,{
+            opacity: 0.3,
+            maxZoom: 18,
+            cellSize: 3,
+            exp: 4,
+        })
+
+	lc_overlay.addBaseLayer(saltLayer, 'Practical Salinity');
+});
+
+jQuery.getJSON('/bom_data/{{models["model_name_eta"]}}-{{dimension}}.json', function (data) {
+
+	etaLayer = L.idwLayer(data,{
+            opacity: 0.3,
+            maxZoom: 18,
+            cellSize: 3,
+            exp: 4,
+        })
+
+	lc_overlay.addBaseLayer(etaLayer, 'height on T cells');
+});
+
+</script>
+</body>
+</html>
